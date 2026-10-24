@@ -9,6 +9,16 @@
     var isCOG = /Linux aarch64/.test(ua) && /AppleWebKit/.test(ua) &&
         !/(Chrome|Chromium|Firefox|Edg|OPR|Android|Mobile)/.test(ua);
 
+    // Base44 sandbox preview. The platform serves this page on the sandbox's
+    // port 3000 with no Flipper One attached, so there is no device screen to
+    // mirror — the PC mirror mode below would leave the panel empty. When the
+    // server runs with BASE44_PREVIEW_MODE=1 it injects this flag, and we run
+    // the local scene session (the COG path) instead: the same UI the panel
+    // shows, driven by the keyboard or the on-photo click map.
+    //
+    // Undefined on the device and in a real PC viewer, where nothing changes.
+    var IS_PREVIEW = window.__BASE44_PREVIEW_MODE__ === true;
+
     // On a PC, drop the panel into a Flipper One photo (amber-backlit) on
     // a dark ground; the device keeps its plain panel.
     (function applyDesktopViewport() {
@@ -115,7 +125,17 @@
             d.appendChild(label);
 
             // Mirror viewer: forward the press to the device (held while down).
+            // In the Base44 sandbox preview there is no device to forward to,
+            // so drive the local input session instead — same press/release
+            // semantics as the physical button. `window.input` exists by the
+            // time a zone is clicked (created in the session boot below).
             function mirrorPress(down) {
+                if (IS_PREVIEW) {
+                    if (!window.input) return;
+                    if (down) window.input.press(r.a);
+                    else window.input.release(r.a);
+                    return;
+                }
                 fetch('/api/mirror-input', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -157,7 +177,9 @@
     // live screen (polled from /api/screen) blitted into the canvas, and
     // forwards its keyboard to the device (the click map already forwards
     // via /api/mirror-input). This keeps the PC in exact sync with COG.
-    if (!isCOG) {
+    // Skipped in the Base44 sandbox preview (IS_PREVIEW): there is no device
+    // to mirror, so the local session below runs instead.
+    if (!isCOG && !IS_PREVIEW) {
         setInterval(function() {
             fetch('/api/screen', { cache: 'no-store' })
                 .then(function(r) { return r.status === 200 ? r.blob() : null; })

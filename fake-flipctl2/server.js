@@ -207,6 +207,15 @@ function applyLedsFromState() {
 var PORT = 8899;
 var BIND = '0.0.0.0';
 
+// Base44 sandbox preview. The platform sets BASE44_PREVIEW_MODE=1 when running
+// this app on the sandbox's port 3000, where there is no Flipper One device
+// posting frames to /api/screen. The flag is handed to the client through a
+// script tag injected into index.html (see serveStatic) so the page runs its
+// own local UI session instead of the PC mirror mode, which would otherwise
+// show an empty panel. Unset — the device, or any other value — injects
+// nothing and leaves the device / PC-viewer behaviour untouched.
+var PREVIEW_MODE = process.env.BASE44_PREVIEW_MODE === '1';
+
 // Regenerated on every process start. The browser polls /api/version
 // and triggers location.reload() when this value changes, so the UI
 // reloads itself after a variant switch without needing cog to restart.
@@ -3137,6 +3146,13 @@ function serveStatic(req, res) {
             res.writeHead(404);
             res.end('Not found');
             return;
+        }
+        // Base44 sandbox preview: flag the page so the client runs its own UI
+        // session instead of mirroring a device that isn't there. Only ever
+        // added in preview mode — the served bytes are untouched otherwise.
+        if (PREVIEW_MODE && filePath === path.join(BASE, 'index.html')) {
+            data = String(data).replace('</head>',
+                '<script>window.__BASE44_PREVIEW_MODE__ = true;</script>\n</head>');
         }
         res.writeHead(200, { 'Content-Type': mime });
         res.end(data);

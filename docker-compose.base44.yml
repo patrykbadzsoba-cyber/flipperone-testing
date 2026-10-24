@@ -1,0 +1,64 @@
+# Base44 sandbox/dev environment for the flipperone-testing monorepo.
+#
+# Everything runs straight from the bind-mounted checkout with the plain
+# `node:22` runtime image — no build step, no npm dependencies (the app has no
+# package.json and no third-party modules), so edits are live immediately.
+#
+# Services:
+#   web         — fake-flipctl2 (the `active-flipctl` variant): static UI +
+#                 JSON APIs on :8899, mapped to the host preview port 3000.
+#   ui-sandbox  — component-library sandbox (fake-flipctl2/ui-sandbox.js) on :8900.
+#
+# Device-only integrations (mmcli/qmicli/nmcli/iw/sox/cec-ctl, sysfs battery,
+# thermal zones, touchpad evdev, /media/ui_png, systemd-based variant switch +
+# OTA update) have no counterpart in the sandbox: those endpoints degrade
+# gracefully and report "unavailable" instead of failing. See AGENTS.md.
+services:
+  web:
+    image: node:22
+    working_dir: /app/fake-flipctl2
+    # server.js refuses to start as non-root on Linux (it expects sysfs access
+    # on the device); the node image runs as root by default, which satisfies it.
+    command: ["node", "server.js"]
+    volumes:
+      - ./:/app
+    environment:
+      # Bare pass-through of the platform's flag (never hardcoded to 1 here):
+      # server.js injects it into index.html so the preview runs the local UI
+      # session instead of mirroring a device screen that doesn't exist.
+      - BASE44_PREVIEW_MODE
+    ports:
+      - "3000:8899"
+    restart: on-failure
+    healthcheck:
+      # /api/version is the app's own liveness endpoint (fresh SERVER_ID per
+      # process) and needs no device hardware, so it probes real responsiveness.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8899/api/version >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      base44.project: "Fake Flipctl 2"
+      base44.kind: "web"
+      base44.port: "3000"
+
+  ui-sandbox:
+    image: node:22
+    working_dir: /app/fake-flipctl2
+    command: ["node", "ui-sandbox.js"]
+    volumes:
+      - ./:/app
+    ports:
+      - "8900:8900"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8900/ui-sandbox.html >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      base44.project: "UI Sandbox"
+      base44.kind: "web"
+      base44.port: "8900"
